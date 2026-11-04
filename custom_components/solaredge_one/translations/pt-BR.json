@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SolarEdge One",
+        "description": "Entre com o mesmo e-mail e senha que você usa em monitoring.solaredge.com. O ID do site é o siteId que aparece na URL do dashboard.",
+        "data": {
+          "site_id": "ID do site",
+          "username": "E-mail",
+          "password": "Senha",
+          "cookie": "Cabeçalho Cookie (opcional)",
+          "user_agent": "User-Agent"
+        },
+        "data_description": {
+          "site_id": "O número depois de siteId= na URL do dashboard (ex.: 1234567).",
+          "cookie": "Só é necessário se a Cloudflare bloquear o Home Assistant: o cabeçalho cookie de uma requisição a monitoring.solaredge.com (contém cf_clearance).",
+          "user_agent": "Deve ser o mesmo do navegador de onde veio o cookie (a Cloudflare amarra o cf_clearance a ele)."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reautenticar o site {site_id}",
+        "description": "O login na SolarEdge foi recusado. Informe o e-mail e a senha novamente.",
+        "data": {
+          "username": "E-mail",
+          "password": "Senha",
+          "cookie": "Cabeçalho Cookie (opcional)",
+          "user_agent": "User-Agent"
+        },
+        "data_description": {
+          "cookie": "Só é necessário se a Cloudflare bloquear o Home Assistant: o cabeçalho cookie de uma requisição a monitoring.solaredge.com (contém cf_clearance).",
+          "user_agent": "Deve ser o mesmo do navegador de onde veio o cookie (a Cloudflare amarra o cf_clearance a ele)."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "E-mail ou senha incorretos.",
+      "mfa_not_supported": "Esta conta exige autenticação em dois fatores (MFA), que a integração não suporta.",
+      "cannot_connect": "Não foi possível acessar o portal SolarEdge.",
+      "rate_limited": "Bloqueado por limite de requisições ou pela Cloudflare. Tente mais tarde ou informe o cookie do navegador.",
+      "no_devices": "Nenhum inversor ou otimizador encontrado neste site (confira o ID do site)."
+    },
+    "abort": {
+      "already_configured": "Este site já está configurado.",
+      "reauth_successful": "Reautenticação concluída."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Intervalos de atualização",
+        "data": {
+          "power_interval": "Potência atual (segundos)",
+          "array_interval": "Otimizadores, energia e status (segundos)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pv_power": {
+        "name": "Potência solar"
+      },
+      "production_state": {
+        "name": "Produção",
+        "state": {
+          "producing": "Produzindo",
+          "idle": "Parado",
+          "not_communicating": "Sem comunicação"
+        }
+      },
+      "last_update": {
+        "name": "Última atualização"
+      },
+      "array_power": {
+        "name": "Potência total dos otimizadores"
+      },
+      "daily_energy": {
+        "name": "Energia hoje"
+      },
+      "connectivity": {
+        "name": "Conectividade"
+      },
+      "alerts": {
+        "name": "Alertas"
+      },
+      "status": {
+        "name": "Status"
+      },
+      "power": {
+        "name": "Potência"
+      },
+      "current": {
+        "name": "Corrente"
+      },
+      "voltage": {
+        "name": "Tensão do módulo"
+      },
+      "optimizer_voltage": {
+        "name": "Tensão de saída do otimizador"
+      },
+      "temperature": {
+        "name": "Temperatura máxima hoje"
+      },
+      "last_measurement": {
+        "name": "Última medição"
+      },
+      "monthly_energy": {
+        "name": "Energia no mês"
+      },
+      "lifetime_energy": {
+        "name": "Energia total"
+      }
+    }
+  }
+}

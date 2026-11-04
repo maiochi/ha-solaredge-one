@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SolarEdge One",
+        "description": "Sign in with the same e-mail and password you use on monitoring.solaredge.com. The site ID is the siteId in the dashboard URL.",
+        "data": {
+          "site_id": "Site ID",
+          "username": "E-mail",
+          "password": "Password",
+          "cookie": "Cookie header (optional)",
+          "user_agent": "User-Agent"
+        },
+        "data_description": {
+          "site_id": "The number after siteId= in the dashboard URL (e.g. 1234567).",
+          "cookie": "Only needed if Cloudflare blocks Home Assistant: the cookie header of a monitoring.solaredge.com request (contains cf_clearance).",
+          "user_agent": "Must match the browser the cookie came from (Cloudflare ties cf_clearance to it)."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate site {site_id}",
+        "description": "The SolarEdge login was rejected. Enter your e-mail and password again.",
+        "data": {
+          "username": "E-mail",
+          "password": "Password",
+          "cookie": "Cookie header (optional)",
+          "user_agent": "User-Agent"
+        },
+        "data_description": {
+          "cookie": "Only needed if Cloudflare blocks Home Assistant: the cookie header of a monitoring.solaredge.com request (contains cf_clearance).",
+          "user_agent": "Must match the browser the cookie came from (Cloudflare ties cf_clearance to it)."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Incorrect e-mail or password.",
+      "mfa_not_supported": "This account requires two-factor authentication (MFA), which the integration does not support.",
+      "cannot_connect": "Could not reach the SolarEdge portal.",
+      "rate_limited": "Blocked by rate limiting or Cloudflare. Try again later or provide the browser cookie.",
+      "no_devices": "No inverters or optimizers found for this site (check the site ID)."
+    },
+    "abort": {
+      "already_configured": "This site is already configured.",
+      "reauth_successful": "Re-authentication successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Polling intervals",
+        "data": {
+          "power_interval": "Current power (seconds)",
+          "array_interval": "Optimizers, energy and status (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pv_power": {
+        "name": "Solar power"
+      },
+      "production_state": {
+        "name": "Production",
+        "state": {
+          "producing": "Producing",
+          "idle": "Idle",
+          "not_communicating": "Not communicating"
+        }
+      },
+      "last_update": {
+        "name": "Last update"
+      },
+      "array_power": {
+        "name": "Optimizers total power"
+      },
+      "daily_energy": {
+        "name": "Energy today"
+      },
+      "connectivity": {
+        "name": "Connectivity"
+      },
+      "alerts": {
+        "name": "Alerts"
+      },
+      "status": {
+        "name": "Status"
+      },
+      "power": {
+        "name": "Power"
+      },
+      "current": {
+        "name": "Current"
+      },
+      "voltage": {
+        "name": "Module voltage"
+      },
+      "optimizer_voltage": {
+        "name": "Optimizer output voltage"
+      },
+      "temperature": {
+        "name": "Max temperature today"
+      },
+      "last_measurement": {
+        "name": "Last measurement"
+      },
+      "monthly_energy": {
+        "name": "Energy this month"
+      },
+      "lifetime_energy": {
+        "name": "Lifetime energy"
+      }
+    }
+  }
+}

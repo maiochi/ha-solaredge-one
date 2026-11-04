@@ -1,0 +1,13 @@
+*.har
+tools/download
+tools/amostras/
+__pycache__/
+/download
+
+# Uso pessoal (não publicar)
+NOTAS.md
+exemplo.jpg
+cookies.png
+Card dia.png
+Card noturno.png
+*.code-workspace

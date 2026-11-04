@@ -1,0 +1,13 @@
+{
+  "domain": "solaredge_one",
+  "name": "SolarEdge One (Portal Web)",
+  "codeowners": ["@maiochi"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "lovelace"],
+  "documentation": "https://github.com/maiochi/ha-solaredge-one",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/maiochi/ha-solaredge-one/issues",
+  "requirements": [],
+  "version": "0.3.0"
+}
