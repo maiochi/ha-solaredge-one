@@ -18,6 +18,8 @@ from typing import Any
 import aiohttp
 
 from .const import (
+    ALERT_CATALOG_FALLBACK,
+    ALERT_CATALOG_URL,
     ALERTS_PATH,
     BASE_URL,
     CLIENT_ID,
@@ -210,6 +212,98 @@ def parse_energy_by_inverter(payload: dict[str, Any]) -> DailyEnergy:
             if (value := _to_float(temp.get("temperature"))) is not None:
                 daily.temperature[serial] = (value, temp.get("temperatureUnit"))
     return daily
+
+
+# O formato de cada item de topAlerts não foi visto numa captura real (o site
+# não tinha alertas), então o parser procura os campos por vários nomes.
+_ALERT_CODE_KEYS = ("alertType", "alertCode", "code", "type", "alertName", "name")
+_ALERT_TITLE_KEYS = ("title", "alertTypeName", "typeName", "displayName", "name")
+_ALERT_TEXT_KEYS = ("description", "message", "details")
+_ALERT_SEVERITY_KEYS = ("impact", "severity", "alertImpact", "level", "priority")
+_ALERT_COMPONENT_KEYS = (
+    "componentName", "deviceName", "equipmentName", "component", "inverterName",
+)
+_ALERT_SERIAL_KEYS = (
+    "serial", "serialNumber", "componentSerial", "deviceSerial", "componentId",
+)
+_ALERT_DATE_KEYS = (
+    "openDate", "startDate", "creationDate", "firstOccurrence", "openTime",
+    "startTime", "date", "time", "timestamp",
+)
+
+
+def _first(raw: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        value = raw.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _alert_date(raw: dict[str, Any]) -> str | None:
+    candidates = [raw.get(key) for key in _ALERT_DATE_KEYS]
+    candidates += [v for k, v in raw.items() if re.search("date|time", k, re.I)]
+    for value in candidates:
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            seconds = value / 1000 if value > 1e11 else value  # epoch em ms ou s
+            return datetime.fromtimestamp(seconds).astimezone().isoformat()
+        if (parsed := _parse_datetime(value)) is not None:
+            return parsed.isoformat()
+    return None
+
+
+def _alert_code(raw: dict[str, Any], catalog: dict[str, Any]) -> str | None:
+    """Código do alerta: um campo conhecido ou qualquer valor que esteja no catálogo."""
+    values = [raw.get(key) for key in _ALERT_CODE_KEYS] + list(raw.values())
+    for value in values:
+        if isinstance(value, dict):
+            values.extend(value.values())
+        elif isinstance(value, str) and value.strip().upper() in catalog:
+            return value.strip().upper()
+    code = _first(raw, _ALERT_CODE_KEYS)
+    return str(code) if isinstance(code, (str, int)) else None
+
+
+def parse_alerts(items: Any, catalog: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Normaliza topAlerts e completa com o catálogo de textos do portal."""
+    catalog = catalog or {}
+    result: list[dict[str, Any]] = []
+    for raw in items if isinstance(items, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        code = _alert_code(raw, catalog)
+        info = catalog.get(code or "")
+        info = info if isinstance(info, dict) else {}
+        serial = _first(raw, _ALERT_SERIAL_KEYS)
+        result.append(
+            {
+                "code": code,
+                "title": info.get("type") or _first(raw, _ALERT_TITLE_KEYS) or code,
+                "description": info.get("description") or _first(raw, _ALERT_TEXT_KEYS),
+                "resolution": info.get("resolution"),
+                "severity": _first(raw, _ALERT_SEVERITY_KEYS),
+                "component": _first(raw, _ALERT_COMPONENT_KEYS),
+                "serial": str(serial) if serial is not None else None,
+                "start": _alert_date(raw),
+            }
+        )
+    return result
+
+
+def catalog_languages(language: str | None) -> list[str]:
+    """Idiomas a tentar para o catálogo: 'pt-BR' -> ['pt_BR', 'en_US']."""
+    defaults = {
+        "pt": "pt_BR", "en": "en_US", "es": "es_ES", "de": "de_DE",
+        "fr": "fr_FR", "it": "it_IT", "nl": "nl_NL",
+    }
+    parts = (language or "").replace("-", "_").split("_")
+    options = []
+    if len(parts) == 2 and parts[1]:
+        options.append(f"{parts[0].lower()}_{parts[1].upper()}")
+    if parts[0].lower() in defaults:
+        options.append(defaults[parts[0].lower()])
+    options.append(ALERT_CATALOG_FALLBACK)
+    return list(dict.fromkeys(options))
 
 
 def parse_site_power(flow: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
@@ -579,6 +673,24 @@ class SolarEdgeWebClient:
         flow = await self._request("GET", POWER_FLOW_PATH)
         live = await self._request("GET", LIVE_POWER_PATH)
         return parse_site_power(flow, live)
+
+    async def async_get_alert_catalog(self, language: str | None) -> dict[str, Any]:
+        """Textos dos alertas (CDN pública); tenta o idioma e cai para inglês."""
+        for option in catalog_languages(language):
+            try:
+                async with self._session.get(
+                    ALERT_CATALOG_URL.format(language=option),
+                    headers={"Accept": "application/json", "User-Agent": self._user_agent},
+                    timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+                ) as resp:
+                    if resp.status != 200:
+                        continue
+                    payload = json.loads(await resp.text())
+            except (TimeoutError, aiohttp.ClientError, ValueError) as err:
+                raise SolarEdgeConnectionError(f"Catálogo de alertas: {err}") from err
+            if isinstance(payload, dict) and payload:
+                return payload
+        raise SolarEdgeError("Catálogo de alertas indisponível")
 
     async def async_get_site_status(self) -> dict[str, Any]:
         communication = await self._request("GET", COMMUNICATION_PATH)

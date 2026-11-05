@@ -10,7 +10,7 @@
  */
 
 const DOMAIN = "solaredge_one";
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.4.0";
 
 // --- Geometria da casa (projeção oblíqua, viewBox 0 0 400 290) -------------
 const A = [220, 262]; // canto frontal inferior esquerdo da fachada
@@ -424,4 +424,291 @@ if (!customElements.get("solaredge-energy-card")) {
     preview: true,
   });
   console.info(`%c SOLAREDGE-ENERGY-CARD %c v${CARD_VERSION} `, "background:#f59e0b;color:#000", "");
+}
+
+// ---------------------------------------------------------------------------
+// SolarEdge Alerts Card: lista os alertas ativos do site com descrição e
+// instruções de resolução (textos do catálogo oficial do portal).
+//
+//   type: custom:solaredge-alerts-card
+//   entity: sensor.xxx_alertas   # opcional; descoberto sozinho
+// ---------------------------------------------------------------------------
+
+const ALERT_TEXT = {
+  pt: {
+    title: "Alertas",
+    none: "Nenhum alerta ativo",
+    noneSub: "O portal não informa problemas no sistema.",
+    howTo: "Como resolver",
+    code: "Código",
+    portal: "Abrir no portal",
+    missing: "Sensor de alertas da SolarEdge One não encontrado.",
+    unavailable: "Indisponível no momento.",
+    severity: (n) => `Impacto ${n}`,
+  },
+  en: {
+    title: "Alerts",
+    none: "No active alerts",
+    noneSub: "The portal reports no problems with the system.",
+    howTo: "How to fix",
+    code: "Code",
+    portal: "Open in portal",
+    missing: "SolarEdge One alerts sensor not found.",
+    unavailable: "Currently unavailable.",
+    severity: (n) => `Impact ${n}`,
+  },
+};
+
+const SAFE_TAGS = new Set(["A", "B", "BR", "EM", "I", "LI", "OL", "P", "SPAN", "STRONG", "U", "UL"]);
+
+// O catálogo traz HTML simples (listas, quebras e links): mantém só isso,
+// sem atributos, e só links https
+function sanitizeHtml(html) {
+  const doc = new DOMParser().parseFromString(`<div>${html || ""}</div>`, "text/html");
+  const clean = (node) => {
+    const out = document.createDocumentFragment();
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        out.appendChild(document.createTextNode(child.textContent));
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        if (!SAFE_TAGS.has(child.tagName)) {
+          out.appendChild(clean(child));
+          return;
+        }
+        const el = document.createElement(child.tagName.toLowerCase());
+        const href = child.tagName === "A" ? child.getAttribute("href") || "" : "";
+        if (/^https:\/\//i.test(href)) {
+          el.setAttribute("href", href);
+          el.setAttribute("target", "_blank");
+          el.setAttribute("rel", "noopener noreferrer");
+        }
+        el.appendChild(clean(child));
+        out.appendChild(el);
+      }
+    });
+    return out;
+  };
+  return clean(doc.body.firstChild);
+}
+
+class SolarEdgeAlertsCard extends HTMLElement {
+  setConfig(config) {
+    this._config = Object.assign({}, config);
+    this._open = new Set();
+    this._key = null;
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  getCardSize() {
+    return 3;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    const entityId = this._config.entity || this._findEntity(hass);
+    const st = entityId && hass.states[entityId];
+    // Só redesenha quando o sensor muda, para não fechar o que está aberto
+    const key = st ? `${entityId}|${st.state}|${st.last_updated}` : "missing";
+    if (key === this._key) return;
+    this._key = key;
+    this._entityId = entityId;
+    this._render(st);
+  }
+
+  _findEntity(hass) {
+    const ent = Object.values(hass.entities || {}).find(
+      (e) => e.platform === DOMAIN && e.translation_key === "alerts"
+    );
+    return ent && ent.entity_id;
+  }
+
+  _lang() {
+    return (this._hass.locale && this._hass.locale.language) || this._hass.language || "pt-BR";
+  }
+
+  _t() {
+    return ALERT_TEXT[this._lang().slice(0, 2)] || ALERT_TEXT.en;
+  }
+
+  _fmtDate(iso) {
+    const d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d)) return null;
+    return d.toLocaleString(this._lang(), { dateStyle: "short", timeStyle: "short" });
+  }
+
+  _level(severity) {
+    const n = parseFloat(severity);
+    if (!Number.isFinite(n)) return "unknown";
+    return n >= 7 ? "high" : n >= 4 ? "medium" : "low";
+  }
+
+  _moreInfo() {
+    if (!this._entityId) return;
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId: this._entityId },
+      })
+    );
+  }
+
+  _render(st) {
+    const t = this._t();
+    const h = (tag, cls, text) => {
+      const el = document.createElement(tag);
+      if (cls) el.className = cls;
+      if (text !== undefined && text !== null) el.textContent = text;
+      return el;
+    };
+
+    const card = h("ha-card");
+    const style = h("style");
+    style.textContent = ALERTS_CSS;
+    const wrap = h("div", "se-alerts");
+    card.append(style, wrap);
+
+    const header = h("div", "head");
+    header.appendChild(h("div", "title", this._config.title || t.title));
+    wrap.appendChild(header);
+
+    if (!st) {
+      wrap.appendChild(h("div", "muted pad", t.missing));
+      this.replaceChildren(card);
+      return;
+    }
+
+    header.addEventListener("click", () => this._moreInfo());
+    const alerts = Array.isArray(st.attributes.alerts) ? st.attributes.alerts : [];
+    const count = parseInt(st.state, 10);
+    const total = Number.isFinite(count) ? count : alerts.length;
+    header.appendChild(h("div", `badge ${total > 0 ? "warn" : "ok"}`, String(total)));
+
+    if (st.state === "unavailable" || st.state === "unknown") {
+      wrap.appendChild(h("div", "muted pad", t.unavailable));
+    } else if (!alerts.length) {
+      const empty = h("div", `empty ${total > 0 ? "warn" : ""}`);
+      const check = h("div", "check");
+      check.innerHTML =
+        total > 0
+          ? '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M1 21h22L12 2zm12-3h-2v-2h2zm0-4h-2v-4h2z"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
+      const text = h("div");
+      // O portal pode informar a contagem sem detalhar os alertas
+      text.append(
+        h("div", "et", total > 0 ? `${t.title}: ${total}` : t.none),
+        h("div", "muted", total > 0 ? "" : t.noneSub)
+      );
+      empty.append(check, text);
+      wrap.appendChild(empty);
+    } else {
+      const list = h("div", "list");
+      alerts.forEach((alert, i) => {
+        const id = `${alert.code || ""}|${alert.serial || ""}|${i}`;
+        const item = h("details", `item ${this._level(alert.severity)}`);
+        item.open = this._open.has(id);
+        item.addEventListener("toggle", () =>
+          item.open ? this._open.add(id) : this._open.delete(id)
+        );
+
+        const summary = h("summary");
+        const main = h("div", "main");
+        main.appendChild(h("div", "at", alert.title || alert.code || "—"));
+        const since = this._fmtDate(alert.start);
+        const meta = [alert.component, alert.serial, since].filter(Boolean).join(" · ");
+        if (meta) main.appendChild(h("div", "muted", meta));
+        summary.append(h("span", "dot"), main);
+        if (alert.severity !== null && alert.severity !== undefined) {
+          summary.appendChild(h("span", "sev", t.severity(alert.severity)));
+        }
+        item.appendChild(summary);
+
+        const body = h("div", "body");
+        if (alert.description) body.appendChild(h("p", "desc", alert.description));
+        if (alert.resolution) {
+          body.appendChild(h("div", "label", t.howTo));
+          const res = h("div", "res");
+          res.appendChild(sanitizeHtml(alert.resolution));
+          body.appendChild(res);
+        }
+        const foot = h("div", "foot");
+        if (alert.code) {
+          foot.appendChild(h("code", null, `${t.code}: ${alert.code}`));
+          body.appendChild(foot);
+        }
+        item.appendChild(body);
+        list.appendChild(item);
+      });
+      wrap.appendChild(list);
+    }
+
+    if (st.attributes.portal_url) {
+      const link = h("a", "portal", `${t.portal} ↗`);
+      link.href = st.attributes.portal_url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      wrap.appendChild(link);
+    }
+    this.replaceChildren(card);
+  }
+}
+
+const ALERTS_CSS = `
+  .se-alerts { padding: 16px; color: var(--primary-text-color); }
+  .head { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+  .title { font-size: 20px; font-weight: 600; }
+  .badge { min-width: 28px; height: 28px; padding: 0 9px; border-radius: 14px; display: grid;
+    place-items: center; font-weight: 600; font-size: 14px; box-sizing: border-box; }
+  .badge.ok { background: rgba(34,197,94,.15); color: #16a34a; }
+  .badge.warn { background: rgba(245,158,11,.18); color: #d97706; }
+  .muted { color: var(--secondary-text-color); font-size: 13px; }
+  .muted:empty { display: none; }
+  .pad { padding-top: 12px; }
+  .empty { display: flex; gap: 12px; align-items: center; margin-top: 14px; padding: 14px;
+    border-radius: 12px; background: rgba(34,197,94,.08); --se-ok: #16a34a; }
+  .empty.warn { background: rgba(245,158,11,.1); --se-ok: #d97706; }
+  .check { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--se-ok) 18%, transparent); color: var(--se-ok); flex: none; }
+  .et { font-weight: 600; margin-bottom: 2px; }
+  .list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .item { border: 1px solid var(--divider-color, rgba(127,127,127,.25)); border-radius: 12px;
+    overflow: hidden; border-left: 4px solid var(--se-level); }
+  .item.high { --se-level: #ef4444; }
+  .item.medium { --se-level: #f59e0b; }
+  .item.low { --se-level: #eab308; }
+  .item.unknown { --se-level: #94a3b8; }
+  summary { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
+    list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "›"; font-size: 20px; line-height: 1; color: var(--secondary-text-color);
+    transition: transform .2s; }
+  .item[open] summary::after { transform: rotate(90deg); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--se-level); flex: none; }
+  .main { flex: 1; min-width: 0; }
+  .at { font-weight: 600; font-size: 14px; }
+  .sev { font-size: 12px; padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+    background: color-mix(in srgb, var(--se-level) 18%, transparent); }
+  .body { padding: 0 14px 12px 32px; font-size: 13px; line-height: 1.5; }
+  .desc { margin: 0 0 10px; }
+  .label { font-weight: 600; margin-bottom: 4px; }
+  .res ol, .res ul { margin: 4px 0; padding-left: 18px; }
+  .res a, .portal { color: var(--primary-color); }
+  .foot { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  code { font-size: 12px; background: var(--secondary-background-color, rgba(127,127,127,.12));
+    padding: 2px 6px; border-radius: 6px; }
+  .portal { display: inline-block; margin-top: 14px; font-size: 13px; text-decoration: none; }
+`;
+
+if (!customElements.get("solaredge-alerts-card")) {
+  customElements.define("solaredge-alerts-card", SolarEdgeAlertsCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "solaredge-alerts-card",
+    name: "SolarEdge Alerts",
+    description: "Alertas ativos do sistema, com descrição e como resolver.",
+    preview: true,
+  });
 }

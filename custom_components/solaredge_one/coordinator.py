@@ -21,8 +21,9 @@ from .api import (
     SolarEdgeError,
     SolarEdgeRateLimitError,
     SolarEdgeWebClient,
+    parse_alerts,
 )
-from .const import DOMAIN, MAX_BACKOFF_INTERVAL
+from .const import DASHBOARD_URL, DOMAIN, MAX_BACKOFF_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,6 +104,21 @@ class ArrayCoordinator(_BackoffCoordinator[ArrayData]):
         self._base_day: date | None = None
         self._monthly_base: dict[str, float] = {}
         self._lifetime_base: dict[str, float] = {}
+        self._alert_catalog: dict[str, Any] = {}
+        self._catalog_day: date | None = None
+
+    async def _async_alert_catalog(self, today: date) -> dict[str, Any]:
+        """Catálogo de textos dos alertas, relido uma vez por dia."""
+        if self._catalog_day != today:
+            try:
+                self._alert_catalog = await self.client.async_get_alert_catalog(
+                    self.hass.config.language
+                )
+            except SolarEdgeError as err:
+                _LOGGER.debug("Catálogo de alertas indisponível: %s", err)
+            # Mesmo com falha, só tenta de novo amanhã (é texto, não é dado)
+            self._catalog_day = today
+        return self._alert_catalog
 
     async def _async_update_bases(self, inverters: list[str], today: date) -> None:
         yesterday = today - timedelta(days=1)
@@ -152,5 +168,11 @@ class ArrayCoordinator(_BackoffCoordinator[ArrayData]):
         except SolarEdgeError as err:
             _LOGGER.debug("Status do site indisponível: %s", err)
             status = previous.status if previous else {}
+        else:
+            catalog = (
+                await self._async_alert_catalog(today) if status.get("top_alerts") else {}
+            )
+            status["alert_list"] = parse_alerts(status.get("top_alerts"), catalog)
+            status["portal_url"] = DASHBOARD_URL.format(site_id=self.client.site_id)
 
         return ArrayData(layout, live, daily, monthly, lifetime, status)

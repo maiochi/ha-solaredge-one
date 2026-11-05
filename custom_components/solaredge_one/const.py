@@ -37,6 +37,13 @@ COMMUNICATION_PATH: Final = "/services/dashboard/site-details/{site_id}/communic
 ALERTS_PATH: Final = "/services/dashboard/alerts/sites/{site_id}"
 SITE_INFO_PATH: Final = "/services/layout/information/site/{site_id}"
 
+# Catálogo público (sem login) com título, descrição e resolução de cada alerta
+ALERT_CATALOG_URL: Final = (
+    "https://monitoring-mfecdn-prod.solaredge.com/translation/"
+    "AlertsMicroFrontEnd/{language}/alerts.json"
+)
+ALERT_CATALOG_FALLBACK: Final = "en_US"
+
 # O cookie cf_clearance da Cloudflare fica atrelado ao User-Agent do navegador
 DEFAULT_USER_AGENT: Final = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

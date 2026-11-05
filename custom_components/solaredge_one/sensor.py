@@ -182,8 +182,17 @@ SITE_ARRAY_SENSORS: tuple[SiteArrayDescription, ...] = (
         translation_key="alerts",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: d.status.get("alerts"),
-        attrs_fn=lambda d: {"top_alerts": d.status.get("top_alerts")},
+        value_fn=lambda d: (
+            d.status.get("alerts")
+            if d.status.get("alerts") is not None
+            else len(d.status["alert_list"]) if "alert_list" in d.status else None
+        ),
+        # Lida pelo card de alertas (custom:solaredge-alerts-card)
+        attrs_fn=lambda d: {
+            "alerts": d.status.get("alert_list") or [],
+            "top_alerts": d.status.get("top_alerts") or [],
+            "portal_url": d.status.get("portal_url"),
+        },
     ),
 )
 
@@ -313,6 +322,8 @@ class SiteArraySensor(SolarEdgeBaseSensor):
 
     coordinator: ArrayCoordinator
     entity_description: SiteArrayDescription
+    # Textos longos dos alertas não precisam ir para o banco de histórico
+    _unrecorded_attributes = frozenset({"alerts", "top_alerts", "portal_url"})
 
     def __init__(self, coordinator, site_id: str, description: SiteArrayDescription) -> None:
         super().__init__(coordinator)

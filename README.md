@@ -107,6 +107,23 @@ As entidades são encontradas automaticamente. Para escolher manualmente:
 | `max_power` | Potência máxima do sistema, em W (padrão: a do inversor) |
 | `panel_max_power` | Potência máxima de um painel, em W (padrão: 440) |
 
+## Card de alertas
+
+Uma área para consultar os alertas ativos do sistema. Ela fica bem numa aba própria do painel.
+
+```yaml
+type: custom:solaredge-alerts-card
+```
+
+- Cada alerta mostra o título, o equipamento, o serial, a data e o impacto. A cor da borda indica a gravidade.
+- Ao abrir um alerta, aparecem a descrição e as instruções **Como resolver**, tiradas do catálogo oficial da SolarEdge no idioma do Home Assistant.
+- Sem alertas, o card mostra **Nenhum alerta ativo**.
+- Clicar no título abre o histórico do sensor, e há um link para o portal.
+
+Opções: `entity` (o sensor **Alertas**, encontrado automaticamente) e `title`.
+
+Os mesmos dados ficam no atributo `alerts` do sensor **Alertas**, para usar em automações e notificações. O catálogo de textos só é baixado quando existe algum alerta, no máximo uma vez por dia.
+
 ## Como funciona
 
 **Login.** O portal autentica pelo AWS Cognito usando o protocolo **SRP**, o mesmo fluxo do site. Nele, a senha **nunca é enviada**: o servidor recebe só uma prova de que o cliente a conhece. A implementação está em [`cognito.py`](custom_components/solaredge_one/cognito.py), em Python puro, sem dependências. A senha e o refresh token ficam guardados na configuração local do Home Assistant (`.storage`), como em outras integrações de nuvem.
@@ -123,6 +140,7 @@ As entidades são encontradas automaticamente. Para escolher manualmente:
 | Início da produção | `GET /services/layout/information/site/{siteId}` |
 | Conectividade | `GET /services/dashboard/site-details/{siteId}/communication` |
 | Alertas | `GET /services/dashboard/alerts/sites/{siteId}` |
+| Textos dos alertas (público) | `GET https://monitoring-mfecdn-prod.solaredge.com/translation/AlertsMicroFrontEnd/{idioma}/alerts.json` |
 
 Cada ciclo faz poucas requisições, não importa quantos painéis existam: a telemetria de todos os otimizadores vem em uma única chamada. Os totais do mês e da vida útil são calculados uma vez por dia (do início do período até ontem) e somados à energia de hoje a cada ciclo.
 
